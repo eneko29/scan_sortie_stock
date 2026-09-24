@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner d'Inventaire Pro - Export CP1252</title>
+    <!-- Chargement de la librairie open-source html5-qrcode -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 15px; max-width: 600px; margin: auto; background-color: #f8f9fa; }
+        h2 { text-align: center; color: #333; }
+        #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px;}
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #fff; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #007bff; color: white; }
+        /* Style pour le bouton d'exportation */
+        button { padding: 12px; width: 100%; background: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer;}
+        button:active { background: #218838; }
+    </style>
+</head>
+<body>
+
+    <h2>Scanner d'Inventaire Pro</h2>
+    
+    <!-- Zone d'affichage de la caméra -->
+    <div id="reader"></div>
+    
+    <!-- Bouton pour déclencher le téléchargement du fichier d'inventaire -->
+    <button onclick="exporterCSV()">Exporter la liste propre en CSV</button>
+
+    <!-- Tableau affichant la liste des matériels scannés -->
+    <table id="table-inventaire">
+        <thead>
+            <tr>
+                <th>Code Barre</th>
+                <th>Désignation</th>
+                <th>Quantité</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Les lignes seront ajoutées ici dynamiquement par JavaScript -->
+        </tbody>
+    </table>
+
+    <script>
+        // --- 1. LE RÉPERTOIRE (Base de données de correspondance) ---
+        // Votre catalogue complet avec les références exactes
+        const catalogue = {
+            "ALC 238400":"Fil souple  1x16²  vert / jaune",
+            "ALC 238401":"Fil souple  1x16²  Rouge",
+            "ALC 238405":"Fil souple  1x16²  noir",
+            "ALC 238407":"Fil souple  1x16²  bleu",
+            "ALC 238408":"Fil souple  1x16²  Brun",
+            "ALC 238545":"Fil souple  1x25²  noir",
+            "ALC 238547":"Fil souple  1x25²  bleu",
+            "ALC 238540":"Fil souple  1x25²  vert / jaune",
+            "ALC 238445":"Fil souple  1x35²  noir",
+            "ALC 238447":"Fil souple  1x35²  bleu",
+            "ALC 238440":"Fil souple  1x35²  vert / jaune",
+            "ALC 238455":"Fil souple  1x50²  noir",
+            "ALC 238465":"Fil souple  1x70²  noir",
+            "ALC 238475":"Fil souple  1x95²  noir",
+            "ALC 362080":"U-1000 ARO2V 1x35 GL",
+            "ALC 362700":"U-1000 ARO2V 4x70 GL",
+            "ALC 394812":"TITANEX 4G2,5  D500P1,5KM",
+            "CAE 1030100":"CAELIFLEX 3G1",
+            "CAE 1050100":"CAELIFLEX 5G1",
+            "CAE 1070100":"CAELIFLEX 7G1",
+            "CAE 1070150":"CAELIFLEX 7G1,5",
+            "CAE 1120100":"CAELIFLEX 12G1",
+            "CAE 1190100":"CAELIFLEX 19G1",
+            "CAE 1270100":"CAELIFLEX 27G1",
+            "CU17263830":"Barre cuivre nu 20x5",
+            "CU17264230":"Barre cuivre nu 25x5",
+            "CU17264522":"Barre cuivre nu 31,5x3,15",
+            "CU17264530":"Barre cuivre nu 31,5x5",
+            "CU17264821":"Barre cuivre nu 40x3",
+            "CU17264830":"Barre cuivre nu 40x5",
+            "CU17265030":"Barre cuivre nu 50x5",
+            "CU17265630":"Barre cuivre nu 63x5",
+            "CU17266430":"Barre cuivre nu 80x5",
+            "CU17267030":"Barre cuivre nu 100x5",
+            "DAC 000840":"Brosse stribo pro alu H 8,40                  L=1m",
+            "DAC 000860":"Brosse stribo pro alu H 8,60                  L=1m",
+            "DAC 000880":"Brosse stribo pro alu H 8,80                  L=1m",
+            "DAC 011019":"Contre écrou PG11",
+            "DAC 308119":"Presse étoupe PG11",
+            "DAC 461104":"Bouchon presse étoupe PG11",
+            "DAC 013013":"Contre écrou PG13",
+            "DAC 308135":"Presse étoupe PG13",
+            "DAC 461308":"Bouchon presse étoupe PG13",
+            "DAC 016014":"Contre écrou PG16",
+            "DAC 308160":"Presse étoupe PG16",
+            "DAC 461609":"Bouchon presse étoupe PG16",
+            "DAC 021018":"Contre écrou PG21",
+            "DAC 308216":"Presse étoupe PG21",
+            "DAC 462103":"Bouchon presse étoupe PG21",
+            "DAC 029014":"Contre écrou PG29",
+            "DAC 308291":"Presse étoupe PG29",
+            "DAC 036005":"Contre écrou PG36",
+            "DAC 308364":"Presse étoupe PG36",
+            "DAC 212001":"Reducteur 21/13",
+            "DAC 291006":"Reducteur 29/21",
+            "DAC 040116":"Presse Etoupe PAN M16",
+            "DAC 041116":"Ecrou PAN M16",
+            "DAC 5212":"Bouchon PAN M16 ",
+            "DAC 040120":"Presse Etoupe PAN M20",
+            "DAC 041120":"Ecrou PAN M20",
+            "DAC 040125":"Presse Etoupe PAN M25",
+            "DAC 041125":"Ecrou PAN M25",
+            "DAC 040132":"Presse Etoupe PAN M32",
+            "DAC 041132":"Ecrou PAN M32",
+            "DAC 004334":"REDUCTEUR PFV M32 / M25",
+            "DAC 150181":"Plaque lexam dim 2050x1250",
+            "DAC PN2503G":"Prof plat 24 REP2 SZ",
+            "ERI 550210":"Barre taraudées TCB 160A 15X5                            L=1m",
+            "ERI 550220":"Barre taraudées TCB 250A 20X5                          L=1m",
+            "ERI 550230":"Barre taraudées TCB 400A 32X5                          L=1m",
+            "ERI 550400":"Barre D perforée DPCB 25x5          L=1,750m",
+            "ERI 550640":"Barre pleine PCB 50x5                                L=4m",
+            "ERI 552500":"Flexibar      3x20                                  L=2m",
+            "ERI 552520":"Flexibar      5x20                                  L=2m",
+            "ERI 552550":"Flexibar    2x24                                    L=2m",
+            "ERI 552570":"Flexibar   4x24                                     L=2m",
+            "ERI 552580":"Flexibar    5x24                                    L=2m",
+            "ERI 552620":"Flexibar    2x32                                    L=2m",
+            "ERI 552630":"Flexibar    3x32                                    L=2m",
+            "ERI 552650":"Flexibar    5x32                                    L=2m",
+            "ERI 552660":"Flexibar    6x32                                    L=2m",
+            "ERI 552740":"Flexibar    8x40                                    L=2m",
+            "ERI 552760":"Flexibar    3x50                                    L=2m",
+            "ERI 552780":"Flexibar    5x50                                    L=2m",
+            "ERI 552810":"Flexibar   10x50                                    L=2m",
+            "ERI 552860":"Flexibar    8x63                                    L=2m",
+            "ERI 552900":"Flexibar     5x80                                  L=2m",
+            "ERI 552930":"Flexibar     10x80                                 L=2m",
+            "ERI 552980":"Flexibar     10x100                               L=2m",
+            "ERI 551310":"Support tetrapolaire 125A",
+            "ERI 563810":"Repartiteur Monophasé 125A",
+            "ERI 563830":"Repartiteur tretrapolaire 100-125 ",
+            "ERI 563840":"Repartiteur tretrapolaire 125 ",
+            "ERI 563920":"Repartiteur tretrapolaire 80-100",
+            "ERI 563930":"Repartiteur tretrapolaire 100-125 ",
+            "ERI 563940":"Repartiteur tretrapolaire 125 ",
+            "ERI 568630":"Collecteur de terre",
+            "ERI 568660":"COLLECTEUR DE TERRE EB44        L=462mm",
+            "ERI 568662":"COLLECTEUR TERRE (1/2 barre)",
+            "ERI 563200":"REPARTITEUR 160 A",
+            "ERI 569040":"REPARTITEUR  UNIBLOC 250A",
+            "IBO B12512":"Goulotte  25x60",
+            "IBO B12520":"Goulotte  25x80",
+            "IBO B12505":"Goulotte  25x40",
+            "IBO B12513":"Goulotte  40x60",
+            "IBO B12521":"Goulotte  40x80",
+            "IBO B12522":"Goulotte  60x80",
+            "IBO B12523":"Goulotte  80x80",
+            "LEG 001664":"Obturateurs 18 modules",
+            "LEG 004807":"Bornier a visser 24x16+1x25mm²",
+            "LEG 004810":"Support bornier tetrapolaire",
+            "LEG 004832":"Bornier terre isole 8x16mm²",
+            "LEG 004842":"Bornier neutre 8x16mm²",
+            "LEG 004844":"Bornier neutre 12x16mm²",
+            "LEG 004845":"Bornier neutre 16x16mm²",
+            "LEG 004852":"Bornier phase isole 8x16mm²",
+            "LEG 404926":"Peigne 13 appareils 1P+N             L=227,5mm",
+            "LEG 405210":"Peigne raccordement TETRA 24M      ",
+            "LEG 405215":"Cache dent",
+            "LEG 404944":"Peigne raccordement TETRA 12M 10mm²",
+            "LEG 404945":"Peigne raccordement TETRA 56M 16mm²",
+            "LEG 404988":"Cache dent",
+            "LEG 404990":"Embout extremite peigne TRI",
+            "LEG 404991":"Embout extremite peigne TETRA",
+            "LEG 404996":"Porte étiquette adshesif",
+            "LEG 020051":"Obturateurs 24 modules XL3 ",
+            "LEG 036581":"Pochette à plan autocollante PM ",
+            "LEG 037181":"Bloc de jonction sect fusible 4mm² pas 8",
+            "LEG 037182":"Bloc de jonction sect neutre 4mm² pas 8",
+            "LEG 037310":"Support  de barres XL3",
+            "LEG 037388":"Barres cuivre à trous 12x2 mm²",
+            "LEG 037389":"Barres cuivre à trous 12x4 mm²",
+            "LEG 037396":"Support tétrapolaire",
+            "LEG 037433":"Barres cuivre à trous 15x4 mm²",
+            "LEG 037452":"4 supports fond de coffret ",
+            "LEG 037555":"Cloison terminale borne sect ",
+            "LEG 098094":"Passe-fil caoutchouc inovac",
+            "LCM 524250":"Dalle télex rail C30                               L=2m",
+            "PER 052101":"Barreau permali 20x20                                       L=1m",
+            "PER 052110":"Barreau permali 30x15                                         L=1m",
+            "PER 052112":"Barreau permali 40x20                                       L=1m",
+            "WUR 0862001006":"1ML RAIL 41/41 EP 2.5MM LGR D",
+            "WUR 0862001226":"1ML RAIL 41/41 EP 2.5MM LGR D",
+            "CEM 990525N":"Rail BZS 1000 noir étiquette gravoply ",
+            "SCH MGN61506":"Disjoncteur C60H-DC 250VD 6A",
+            "SCH MGN61508":"Disjoncteur C60H-DC 250VD 10A",
+            "SCH ZBZ 32":"Port-étiquette ",
+            "SCH ZBY0101":"Etiquette sans texte ",
+            "SCH ZBY0102":"Etiquette sans texte ",
+            "SCH ZBY2103":"Porte Etiquette marche ",
+            "SCH ZBY2112":"Porte Etiquette hors service ",
+            "SCH ZBY2123":"Porte Etiquette réarmement ",
+            "SCH ZBY2126":"Porte Etiquette sous tension ",
+            "SCH ZBY2104":"Porte Etiquette arrêt",
+            "SCH ZBY2130":"Porte Etiquette arrêt d'urgence ",
+            "SCH ZBY2135":"Porte Etiquette défaut ",
+            "SCH ZBY2166":"Porte Etiquette arrêt marche ",
+            "SCH ZBY2185":"Porte Etiquette auto-o-manuel ",
+            "SCH ZBY8130":"Etiquette DIAM 22 DIAM 90",
+            "SCH ZBY9120":"Etiquette DIAM 22 DIAM 60",
+            "SCH LVS03220":"Bande  obturateur                                         L=1m",
+            "SCH LVS04161":"Jeu de 4 barres CU 160A 15X5                L=1m",
+            "SCH LVS04162":"Jeu de 4 barres CU 250A 20X5              L=1m",
+            "SCH LVS04163":"Jeu de 4 barres CU 400A 32X5              L=1m",
+            "SCH 04065":"Jeu de 4 liaison CU 100/250A ",
+            "SCH 04075":"Jeu de 4 liaison CU 400/630A ",
+            "SCH 04171":"Jeu de 4 barres CU 160A 15X5            L=1,4m",
+            "SCH 04172":"Jeu de 4 barres CU 250A 20X             L=1,4m",
+            "SCH 04173":"Jeu de 4 barres CU 400A 32X5          L=1,4m  ",
+            "SCH 04192":"Support de barre étagé pour gaine",
+            "SCH 04200":"Collecteur de terre 24 modules",
+            "SCH 04243":"4 Capots bracelets horizontal",
+            "SCH 13430":"Obturateurs 24 modules RAL 90",
+            "SCH A9XPH224":"Acti9 iC60 - peigne à dents - 2P - 100A -          24 modules de 18mm",
+            "SCH A9XPN624":"Acti9 iDT40 - peigne - 1P+N -                               24 modules de 18mm - 80A",
+            "SCH A9XPE210":"Linergy - flasques latérales pour peigne 2P -          lot de 10",
+            "SCH A9XPH424":"Acti9 iC60 - peigne à dents - 4P - 100A -                 24 modules de 18mm",
+            "SCH A9XPE410":"Linergy - flasques latérales pour peigne 4P -                      lot de 10",
+            "SCH A9XPH112":"Acti9 iC60 - peigne à dents - 1P - 100A -              12 modules de 18mm",
+            "SCH A9XPE110":"Linergy - flasques latérales pour peigne 1P- lot de 10",
+            "SCH A9XPN748":"Acti9 iDT40 - peigne - 3P+N -                                                 48 modules de 18mm - 80A",
+            "SCH A9XPN724":"Acti9 Idt40-peigne-3P+N                                   24 modules de 18mm-80A",
+            "SCH PRA90082":"Pochette à plan  PRAGMA",
+            "SES 08190002018":"Gaine spirale diamètre 6",
+            "SES 08190003018":"Gaine spirale diamètre 12",
+            "SES 08190021018":"Gaine spirale diamètre 22",
+            "SOC 50000308":"Rail DIN 35x15 asymétrique                  L=3m",
+            "SOC 50000331":"Rail DIN 35x15 symétrique                    L=3m             ",
+            "SOC 50000302":"RAIL ACIER SYM. 35X7.5 L=2M",
+            "TOL 599020":"Prof plat Z 24x24x24 REP2 SZ",
+            "TOL 606001":"Prof plat 20x4  2m  7x25",
+            "WAG 249-116":"Butée arrêt encliquetable PR",
+            "WAG 249-130":"Seringue de pate ce contact",
+            "WAG 285-135":"Borne de passage grise 2 conducteurs - 35mm²",
+            "WAG 285-137":"Borne de passage V/J 2 conducteurs -    35mm²",
+            "WAG 285-150":"Borne de passage grise 2 conducteurs - 50mm²",
+            "WAG 285-195":"Borne de passage grise 2 conducteurs - 95mm²",
+            "WAG 285-435":" PEIGNE-PONTAGE ENFICHE SERIE 285",
+            "WAG 2001-1408":"TOPJOB®S : BORNE DE PASSAGE",
+            "WAG 2002-402":"TOPJOB'S PEIGNE-PONTAGE ENFICHE ",
+            "WAG 2002-403":"TOPJOB'S PEIGNE-PONTAGE ENFICHE",
+            "WAG 2002-404":"TOPJOB'S PEIGNE-PONTAGE ENFICHE",
+            "WAG 2002-405":"TOPJOB'S PEIGNE-PONTAGE ENFICHE",
+            "WAG 2002-433":"TOPJOB'S PEIGNE-PONTAGE ENFICHE",
+            "WAG 2002-434":"TOPJOB'S PEIGNE-PONTAGE ENFICHE",
+            "WAG 2002-435":"TOBJOB'S PEIGNE-PONTAGE ENFICHE",
+            "WAG 2002-436":"TOPJOB'S PEIGNE-PONTAGE ENFICHE",
+            "WAG 2002-1201":"Borne TOPJOB'S 2 conducteurs - 2,5mm²",
+            "WAG 2002-1291":"Plaque interm et extrem TOPJOB'S 2 cond - 2,5mm²",
+            "WAG 2002-1301":"Borne TOPJOB'S 3 conducteurs - 2,5mm²",
+            "WAG 2002-1307":"Borne TOPJOB'S 3 conducteurs - 2,5mm² V/J",
+            "WAG 2002-1391":"Plaque interm et extrem TOPJOB'S 3 cond - 2,5mm²",
+            "WAG 2002-1401":"Borne TOPJOB'S 4 conducteurs - 2,5mm² ",
+            "WAG 2002-1491":"Plaque interm et extrem TOPJOB'S 4 cond - 2,5mm²",
+            "WAG 2002-1872":"Borne sectionnable TOPJOB'S 4 cond - 2,5mm²",
+            "WAG 2002-1892":"Plaque interm et extrem TOPJOB'S 4 cond - 2,5mm²",
+            "WAG 2002-2201":"Borne TOPJOB'S 2 étages  - 2,5mm²",
+            "WAG 2002-2207":"Borne TOPJOB'S 2 étages  - 2,5mm  V/J",
+            "WAG 2002-2291":"Plaque interm et extrem TOPJOB'S étage - 2,5mm²",
+            "WAG 2002-2401":"Borne TOPJOB'S 2 étages 4 cond  - 2,5mm²",
+            "WAG 2002-2491":"Plaque interm et extrem TOPJOB'S étage - 2,5mm²",
+            "WAG 2004-1201":"Borne TOPJOB'S 2 conducteurs - 4mm²",
+            "WAG 2004-1291":"Plaque interm et extrem TOPJOB'S 2 cond - 4mm²",
+            "WAG 2006-1201":"Borne TOPJOB'S 2 conducteurs - 6mm²",
+            "WAG 2006-1207":"Borne TOPJOB'S 2 conducteurs - 6mm² V/J",
+            "WAG 2006-1291":"Plaque interm et extrem TOPJOB'S 2 cond - 6mm²",
+            "WAG 2006-1301":"Borne TOPJOB'S 3 conducteurs - 6mm²",
+            "WAG 2006-1307":"Borne TOPJOB'S 3 conducteurs - 6mm V/J",
+            "WAG 2006-1391":"Plaque interm et extrem TOPJOB'S 3 cond - 6mm²",
+            "WAG 2009-0174":"Adaptateur de test diam 4 mm",
+            "WAG 2010-1201":"Borne TOPJOB'S 2 conducteurs - 10mm²",
+            "WAG 2010-1207":"Borne TOPJOB'S 2 conducteurs - 10 mm² V/J",
+            "WAG 2010-1291":"Plaque interm et extrem TOPJOB'S 2 cond - 10mm²",
+            "WAG 2016-1201":"Borne TOPJOB'S 2 conducteurs - 16mm²",
+            "WAG 2016-1207":"Borne TOPJOB'S 2 conducteurs - 16 mm² V/J",
+            "WAG 2016-1291":"Plaque interm et extrem TOPJOB'S 2 cond - 16mm²",
+            "WAG 2016-1301":"Borne TOPJOB'S 3 conducteurs - 16mm²",
+            "WAG 2016-1307":"Borne TOPJOB'S 3 conducteurs - 16mm² V/J",
+            "WAG 2016-1391":"Plaque interm et extrem  3 cond -16mm²",
+        };
+
+        // --- 2. CONFIGURATION DU SCANNER ---
+        // Initialisation de l'objet de scan lié au <div> "reader"
+        const html5QrCode = new Html5Qrcode("reader");
+
+        // Fonction exécutée lorsqu'un code est lu avec succès
+        function onScanSuccess(decodedText, decodedResult) {
+            // Mettre le scanner en pause pour éviter les doubles scans instantanés
+            html5QrCode.pause(); 
+
+            // Chercher le code scanné dans le catalogue
+            let designation = catalogue[decodedText];
+            
+            if (designation) {
+                // Si trouvé, demander la quantité via une boîte de dialogue
+                let qty = prompt("Matériel reconnu : " + designation + "\n\nEntrez la quantité :");
+                
+                // Si la quantité est valide, on l'ajoute au tableau
+                if (qty !== null && qty !== "" && !isNaN(qty)) {
+                    let tbody = document.querySelector("#table-inventaire tbody");
+                    let row = tbody.insertRow(0); // Insérer la nouvelle ligne en haut
+                    row.insertCell(0).innerText = decodedText;
+                    row.insertCell(1).innerText = designation;
+                    row.insertCell(2).innerText = qty;
+                }
+            } else {
+                // Si le code n'est pas dans le catalogue
+                alert("Ce code (" + decodedText + ") n'est pas répertorié dans le catalogue.");
+            }
+            
+            // Relancer le scanner automatiquement après 1,5 seconde
+            setTimeout(() => html5QrCode.resume(), 1500);
+        }
+
+        // --- 3. DÉMARRAGE DU SCANNER ---
+        // Commande stricte demandant la caméra arrière (facingMode: "environment")
+        // La librairie html5-qrcode gère automatiquement la demande d'autorisation de caméra.
+        html5QrCode.start(
+            { facingMode: "environment" }, // Demande la caméra principale (dos)
+            { 
+                fps: 10,    // Nombre d'images par seconde pour l'analyse
+                qrbox: {width: 250, height: 150} // Zone de visée à l'écran
+            },
+            onScanSuccess // Fonction à appeler en cas de succès
+        ).catch(err => {
+            // En cas d'erreur de caméra (refus, pas de caméra...)
+            alert("Erreur lors du démarrage de la caméra arrière : " + err);
+        });
+
+        // --- 4. FONCTION D'EXPORTATION CORRIGÉE (FIX Â², NOM DYNAMIQUE) ---
+        function exporterCSV() {
+            // A. Logique : Nom de fichier dynamique avec date du jour (jj_mm_aaaa)
+            const maintenant = new Date();
+            const jour = String(maintenant.getDate()).padStart(2, '0');
+            const mois = String(maintenant.getMonth() + 1).padStart(2, '0'); // Janvier est 0!
+            const annee = maintenant.getFullYear();
+            // J'ai remplacé les '/' demandés par des '_' car '/' est interdit dans les noms de fichiers.
+            const nomFichier = `sortie_de_stock_${jour}_${mois}_${annee}.csv`;
+
+            // B. Logique : Construction du contenu texte du CSV
+            
+            // 1. Instruction STRICTE "sep=;" en première ligne pour forcer Excel à créer les colonnes
+            let csvStringContent = "sep=;\nCode Barre;Designation;Quantite\n";
+            
+            // 2. Récupérer les données du tableau d'inventaire
+            let rows = document.querySelectorAll("#table-inventaire tbody tr");
+            
+            if(rows.length === 0) {
+                alert("La liste est vide. Scannez des articles avant d'exporter.");
+                return;
+            }
+
+            rows.forEach(row => {
+                let cols = row.querySelectorAll("td");
+                // On s'assure de ne pas avoir de points-virgules dans les textes pour ne pas décaler les colonnes
+                let code = cols[0].innerText.replace(/;/g, "");
+                let designation = cols[1].innerText.replace(/;/g, "");
+                let quantite = cols[2].innerText.replace(/;/g, "");
+                
+                csvStringContent += code + ";" + designation + ";" + quantite + "\n";
+            });
+
+            // C. Logique : Encodage STRICT en Windows-1252 (mono-octet) pour résoudre le bug Â²
+            
+            // 1. Fonction pour convertir une chaîne JavaScript (multi-octets) en octets bruts Windows-1252 (mono-octet)
+            // Cela transforme le caractère '²' en l'octet unique 0xB2, que Excel interprète correctement,
+            // bypassing ainsi l'interprétation UTF-8 erronée (qui décompose '²' en deux octets 0xC2 0xB2 interprétés Â²).
+            // Le même fix s'applique pour les accents standards Ouest-Européens.
+            function stringToWindows1252Bytes(str) {
+                const bytes = new Uint8Array(str.length);
+                for (let i = 0; i < str.length; i++) {
+                    const charCode = str.charCodeAt(i);
+                    // Le caractère superscript '²' (Unicode code 178 / 0x00B2)
+                    // se mappe directement sur l'octet 178 (0xB2) en Windows-1252.
+                    if (charCode <= 255) {
+                        bytes[i] = charCode;
+                    } else {
+                        // Caractère non gérable en Windows-1252 (rare pour cette application), remplacé par un placeholder.
+                        bytes[i] = '?'.charCodeAt(0);
+                    }
+                }
+                return bytes;
+            }
+
+            // 2. Encoder le contenu complet du CSV en tableau d'octets bruts Windows-1252
+            const encodedDataRaw = stringToWindows1252Bytes(csvStringContent);
+
+            // D. Logique : Création et téléchargement du fichier Blob final
+            
+            // Création du Blob à partir du tableau d'octets directs (Plus besoin de charset ici)
+            let blob = new Blob([encodedDataRaw], { type: "text/csv" });
+            
+            // Générer un lien invisible pour lancer le téléchargement
+            let link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = nomFichier; // Utilise le nom dynamique : sortie_de_stock_jj_mm_aaaa.csv
+            link.click();
+        }
+    </script>
+</body>
+</html>
